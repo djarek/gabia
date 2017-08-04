@@ -1,0 +1,5 @@
+find_program(CLANG_FORMAT NAMES "clang-format")
+message(STATUS "clang-format found: ${CLANG_FORMAT}")
+file(GLOB_RECURSE HEADER_FILES *.hpp)
+file(GLOB_RECURSE SOURCE_FILES *.cpp *.ipp)
+add_custom_target(clang-format COMMAND ${CLANG_FORMAT} -i -style=file  ${SOURCE_FILES} ${HEADER_FILES})
