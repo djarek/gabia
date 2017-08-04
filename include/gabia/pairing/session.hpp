@@ -17,6 +17,8 @@
 #include <gabia/crypto/hkdf.hpp>
 #include <gabia/crypto/srp_context.hpp>
 
+#include <boost/variant.hpp>
+
 #include <memory>
 
 namespace gabia {
@@ -146,6 +148,59 @@ private:
                               // server configuration
 };
 } // verify
+namespace pairings {
+struct m1_list_data {
+    pairing::state state;
+    pairing::method method;
+
+    bool invalid() const {
+        return state != pairing::state::m1 ||
+               method != pairing::method::pairings_list;
+    }
+};
+
+struct m1_add_data {
+    pairing::state state;
+    pairing::method method;
+    pairing::pairing_entry new_pairing;
+
+    bool invalid() const {
+        return state != pairing::state::m1 ||
+               method != pairing::method::pairing_add ||
+               new_pairing.identifier.empty();
+    }
+};
+
+struct m1_remove_data {
+    pairing::state state;
+    pairing::method method;
+    std::vector<gsl::byte> identifier;
+
+    bool invalid() const {
+        return state != pairing::state::m1 ||
+               method != pairing::method::pairing_remove || identifier.empty();
+    }
+};
+
+template <typename KeyStore>
+class server_context {
+public:
+    using key_store_type = KeyStore;
+
+    server_context(KeyStore& key_store) : key_store{key_store} {}
+
+    template <typename Request, typename Response, typename RemoveCallback>
+    void handle_m1(Request& request, Response& response,
+                   RemoveCallback&& remove_callback);
+
+private:
+    void parse(std::istream& request_payload,
+               boost::variant<boost::blank, m1_add_data, m1_remove_data,
+                              m1_list_data>& data);
+
+    key_store_type& key_store;
+};
+}
 } // namespace pairing
 } // namespace gabia
 

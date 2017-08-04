@@ -17,10 +17,15 @@
 namespace gabia {
 namespace pairing {
 
+enum class flags : uint8_t {
+    user = 0x00,
+    admin = 0x01,
+};
+
 struct pairing_entry {
     std::vector<gsl::byte> identifier;
     crypto::ed25519_key ltpk;
-    bool is_admin = false;
+    pairing::flags flags;
 };
 
 constexpr auto max_setup_attempts = 100;
@@ -32,24 +37,25 @@ public:
 
     void emplace(pairing_entry pairing) { pairings.emplace_back(pairing); }
 
-    const_iterator find(const std::vector<gsl::byte>& identifier) const {
+    const_iterator find(gsl::span<const gsl::byte> identifier) const {
         return std::find_if(
             begin(), end(),
             [&identifier](const pairing::pairing_entry& pairing) {
-                return pairing.identifier == identifier;
+                return gsl::make_span(pairing.identifier) == identifier;
             });
     }
 
-    const_iterator erase(const std::vector<gsl::byte>& identifier) {
+    const_iterator erase(gsl::span<const gsl::byte> identifier) {
         auto admin_pairings = 0;
-        auto it = std::remove_if(pairings.begin(), pairings.end(),
-                                 [&identifier, &admin_pairings](
-                                     const pairing::pairing_entry& pairing) {
-                                     if (pairing.is_admin) {
-                                         admin_pairings++;
-                                     }
-                                     return pairing.identifier == identifier;
-                                 });
+        auto it = std::remove_if(
+            pairings.begin(), pairings.end(),
+            [&identifier,
+             &admin_pairings](const pairing::pairing_entry& pairing) {
+                if (pairing.flags == pairing::flags::admin) {
+                    admin_pairings++;
+                }
+                return gsl::make_span(pairing.identifier) == identifier;
+            });
         if (admin_pairings == 0) {
             pairings.clear();
             return pairings.end();
@@ -58,9 +64,11 @@ public:
         return pairings.erase(it, pairings.end());
     }
 
+    const_iterator erase(const_iterator it) { return erase({it->identifier}); }
+
     auto count_admins() const {
         std::count_if(begin(), end(), [](const pairing_entry& pairing) {
-            return pairing.is_admin;
+            return pairing.flags == pairing::flags::admin;
         });
     }
 

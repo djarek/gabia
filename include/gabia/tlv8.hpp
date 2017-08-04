@@ -11,6 +11,7 @@
 #define GABIA_TLV8_HPP
 
 #include <gsl/gsl>
+#include <iostream>
 
 namespace gabia {
 namespace tlv {
@@ -78,7 +79,9 @@ inline std::istream& read(
 
 inline std::ostream& write(std::ostream& ostream, gsl::byte tag,
                            gsl::span<const gsl::byte> item_data) {
-    while (!item_data.empty()) {
+    bool first_fragment = true;
+    while (first_fragment || !item_data.empty()) {
+        first_fragment = false; // This is to handle TLVs with empty data
         auto fragment_size = std::min<std::ptrdiff_t>(item_data.size_bytes(),
                                                       max_fragment_data_size);
         auto fragment = item_data.first(fragment_size);
@@ -87,10 +90,14 @@ inline std::ostream& write(std::ostream& ostream, gsl::byte tag,
 
         ostream.write(reinterpret_cast<const char*>(header.data()),
                       header.size());
+        if (fragment.empty()) {
+            break;
+        }
         ostream.write(reinterpret_cast<const char*>(fragment.data()),
                       fragment.size_bytes());
         item_data = item_data.subspan(fragment_size);
     }
+
     return ostream;
 }
 

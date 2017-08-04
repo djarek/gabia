@@ -285,7 +285,7 @@ void server_context<KeyStore>::handle_m5(Request& request, Response& response) {
     pairing::pairing_entry new_pairing{
         std::move(request_data.controller_identifier),
         {{request_data.controller_ltpk}},
-        true};
+        pairing::flags::admin};
     auto controller_info =
         generate_device_info({constants::controller_signing_info,
                               constants::controller_signing_salt},
@@ -424,6 +424,7 @@ void server_context<KeyStore>::parse(std::istream& request_payload,
                                      m3_data& request_data) {
     tlv::item item = {};
     std::vector<gsl::byte> encrypted_data{};
+
     while (request_payload.good() && tlv::read(request_payload, item)) {
         switch (static_cast<pairing::tag>(item.tag)) {
             case pairing::tag::state:
@@ -530,5 +531,182 @@ void server_context<KeyStore>::generate(crypto::aead_secrets& secrets) const {
 }
 
 } // namespace verify
+
+namespace pairings {
+
+template <typename KeyStore>
+template <typename Request, typename Response, typename RemoveCallback>
+void server_context<KeyStore>::handle_m1(Request& request, Response& response,
+                                         RemoveCallback&& remove_callback) {
+    boost::variant<boost::blank, m1_add_data, m1_remove_data, m1_list_data>
+        request_data;
+    array_istream request_payload{request.body.data(), request.body.size()};
+    parse(request_payload, request_data);
+    auto response_payload = beast::ostream(response.body);
+    tlv::write(response_payload, pairing::tag::state, pairing::state::m2);
+    if (request_payload.bad() || request_payload.fail()) {
+        tlv::write(response_payload, pairing::tag::error,
+                   pairing::error::unknown);
+        response.result(status::bad_request);
+        return;
+    }
+
+    switch (request_data.which()) {
+        case 0:
+            tlv::write(response_payload, pairing::tag::error,
+                       pairing::error::unknown);
+            response.result(status::bad_request);
+            break;
+        case 1: { // add pairing
+            auto& add_data = boost::get<m1_add_data>(request_data);
+            if (add_data.invalid()) {
+                tlv::write(response_payload, pairing::tag::error,
+                           pairing::error::unknown);
+                response.result(status::bad_request);
+                break;
+            }
+
+            try {
+                key_store.emplace(std::move(add_data.new_pairing));
+            } catch (const std::exception& e) {
+                tlv::write(response_payload, pairing::tag::error,
+                           pairing::error::max_peers);
+                response.result(status::bad_request);
+                break;
+            }
+
+            response.result(status::ok);
+            break;
+        }
+
+        case 2: { // remove pairing
+            auto& remove_data = boost::get<m1_remove_data>(request_data);
+            if (remove_data.invalid()) {
+                tlv::write(response_payload, pairing::tag::error,
+                           pairing::error::unknown);
+                response.result(status::bad_request);
+                return;
+            }
+
+            auto pairing_it = key_store.find({remove_data.identifier});
+            if (pairing_it == key_store.end()) {
+                // Return success if it does not exist
+                break;
+            }
+
+            auto final_operation = gsl::finally(
+                [this, pairing_it]() { key_store.erase(pairing_it); });
+            try {
+                remove_callback({remove_data.identifier});
+            } catch (const std::exception& e) {
+                throw;
+            }
+
+            break;
+        }
+        case 3: { // list pairing
+            auto& list_data = boost::get<m1_list_data>(request_data);
+            if (list_data.invalid()) {
+                tlv::write(response_payload, pairing::tag::error,
+                           pairing::error::unknown);
+                response.result(status::bad_request);
+                return;
+            }
+            bool first_time = true;
+            for (const auto& entry : key_store) {
+                if (!first_time) {
+                    tlv::item seprator{
+                        static_cast<gsl::byte>(pairing::tag::separator), {}};
+                    tlv::write(response_payload, seprator);
+                }
+                first_time = false;
+                tlv::write(response_payload, pairing::tag::identifier,
+                           entry.identifier);
+                std::array<gsl::byte, crypto::ed25519_key::public_key_size>
+                    ltpk_bytes;
+                entry.ltpk.export_public_key({ltpk_bytes});
+                tlv::write(response_payload, pairing::tag::public_key,
+                           ltpk_bytes);
+                tlv::write(response_payload, pairing::tag::permissions,
+                           static_cast<gsl::byte>(entry.flags));
+            }
+            response.result(status::ok);
+            break;
+        }
+        default:
+            Expects(false);
+    }
+}
+
+template <typename KeyStore>
+void server_context<KeyStore>::parse(
+    std::istream& request_payload,
+    boost::variant<boost::blank, m1_add_data, m1_remove_data, m1_list_data>&
+        data) {
+    tlv::item item = {};
+    pairing::state state{};
+    pairing::method method{};
+
+    std::vector<gsl::byte> identifier{};
+    std::vector<gsl::byte> public_key{};
+    pairing::flags flags{};
+
+    while (request_payload.good() && tlv::read(request_payload, item)) {
+        switch (static_cast<pairing::tag>(item.tag)) {
+            case pairing::tag::state:
+                if (item.data.size() != sizeof(gsl::byte)) {
+                    request_payload.setstate(std::istream::failbit);
+                    return;
+                }
+                state = static_cast<pairing::state>(item.data[0]);
+                break;
+            case pairing::tag::method:
+                if (item.data.size() != sizeof(gsl::byte)) {
+                    request_payload.setstate(std::istream::failbit);
+                    return;
+                }
+                method = static_cast<pairing::method>(item.data[0]);
+                break;
+            case pairing::tag::identifier:
+                identifier = std::move(item.data);
+                break;
+            case pairing::tag::public_key:
+                public_key = std::move(item.data);
+                break;
+            case pairing::tag::permissions:
+                flags = static_cast<pairing::flags>(item.data[0]);
+                break;
+            default:
+                // HAP non-commercial spec R1: 12.1.1: "TLV items with
+                // unrecognized types must be silently ignored."
+                break;
+        }
+    }
+
+    switch (method) {
+        case pairing::method::pairing_add: {
+            m1_add_data add_data{
+                state, method, {std::move(identifier), {public_key}, flags}};
+            data = std::move(add_data);
+            break;
+        }
+        case pairing::method::pairing_remove: {
+            m1_remove_data remove_data{state, method, std::move(identifier)};
+            data = std::move(remove_data);
+            break;
+        }
+        case pairing::method::pairings_list: {
+            m1_list_data list_data{state, method};
+            data = std::move(list_data);
+            break;
+        }
+        default:
+            request_payload.setstate(std::istream::failbit);
+            break;
+    }
+}
+
+} // namespace pairings
+
 } // namespace pairing
 } // namespace gabia

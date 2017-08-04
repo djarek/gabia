@@ -58,6 +58,8 @@ private:
                             asio::yield_context& yield);
     void handle_pair_setup(peer& controller, peer::request_type&,
                            asio::yield_context& yield);
+    void handle_pairings(peer& controller, peer::request_type& request,
+                         asio::yield_context& yield);
 
     void handle_discovery(peer& controller, peer::request_type&,
                           asio::yield_context& yield);

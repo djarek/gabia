@@ -20,6 +20,7 @@ server::server(asio::io_service& service) : acceptor{service} {
     routes = std::vector<route_handler>{
         {"/pair-setup", LAMBDA_BIND(handle_pair_setup)},
         {"/pair-verify", LAMBDA_BIND(handle_pair_verify)},
+        {"/pairings", LAMBDA_BIND(handle_pairings)},
         {"/accessories", LAMBDA_BIND(handle_discovery)},
         {"/characteristics", LAMBDA_BIND(handle_characteristics)}};
 #undef LAMBDA_BIND
@@ -289,6 +290,22 @@ void server::handle_characteristics(peer& controller,
         response.result(beast::http::status::method_not_allowed);
     }
 
+    controller.async_send(response, yield[error]);
+    if (error) {
+        controller.disconnect();
+    }
+}
+
+void server::handle_pairings(peer& controller, peer::request_type& request,
+                             asio::yield_context& yield) {
+    gabia::pairing::pairings::server_context<decltype(pairings)> context{
+        pairings};
+    auto response = make_tlv_response(request);
+    context.handle_m1(request, response, [](gsl::span<gsl::byte> identifier) {
+
+    });
+
+    beast::error_code error{};
     controller.async_send(response, yield[error]);
     if (error) {
         controller.disconnect();
