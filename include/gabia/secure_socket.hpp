@@ -229,6 +229,7 @@ private:
                 bool success = socket.decrypt_pdu(payload_length);
                 if (!success) {
                     socket.decrypted_buffer.consume(payload_length);
+                    // TODO: use a more appropriate error code
                     error = asio::error::no_permission;
                     handler(error, 0);
                     return;
