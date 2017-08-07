@@ -25,6 +25,18 @@ namespace gabia {
 namespace asio = boost::asio;
 namespace beast = boost::beast;
 
+template <typename DynamicBuffer>
+auto prepare_or_error(DynamicBuffer& buffer, size_t n, beast::error_code& error)
+{
+    boost::optional<typename DynamicBuffer::mutable_buffers_type> sequence;
+    try {
+         sequence = buffer.prepare(n);
+    } catch (const std::length_error&) {
+        error = asio::error::message_size;
+    }
+    return sequence;
+}
+
 template <typename Stream>
 class secure_socket {
 public:
@@ -32,11 +44,10 @@ public:
 
     constexpr static auto max_payload_length = 1024;
 
-    secure_socket(asio::io_service& service) : next_layer_stream{service} {}
+    explicit secure_socket(asio::io_service& service) : next_layer_stream{service} {}
 
-    secure_socket(next_layer_type&& next_layer_stream,
-                  crypto::aead_secrets secrets)
-        : next_layer_stream{std::move(next_layer_stream)}, secrets{secrets} {}
+    template<class... Args>
+    secure_socket(crypto::aead_secrets secrets, Args&&... args) : secrets{secrets}, next_layer_stream{std::forward<Args>(args)...} {}
 
     auto& next_layer() { return next_layer_stream; }
 
@@ -91,7 +102,11 @@ public:
         size_t transferred = 0;
         while (transferred < sizeof(payload_length) + payload_length +
                                  crypto::aead_auth_tag_size) {
-            auto mb = raw_buffer.prepare(max_payload_length);
+            auto mb = prepare_or_error(raw_buffer, max_payload_length, error);
+            if (error) {
+                return 0;
+            }
+
             transferred += next_layer().read_some(mb, error);
             if (error) {
                 return 0;
@@ -213,7 +228,12 @@ private:
             CORO_REENTER(*this) {
                 while (transferred < sizeof(payload_length) + payload_length +
                                          crypto::aead_auth_tag_size) {
-                    raw_sequence = socket.raw_buffer.prepare(1024);
+                    raw_sequence = prepare_or_error(socket.raw_buffer, 1024, error);
+                    if (error) {
+                        // TODO: Should the socket be closed? It's going to be most likely in an unusable state.
+                        socket.get_io_service().post(beast::bind_handler(handler, error, 0));
+                        return;
+                    }
                     CORO_YIELD socket.next_layer().async_read_some(
                         *raw_sequence, *this);
                     transferred += n;
@@ -249,7 +269,7 @@ private:
             buffer_span_cast(raw_buffer.data())
                 .subspan(sizeof(payload_length),
                          payload_length + crypto::aead_auth_tag_size);
-        auto message_buffer = decrypted_buffer.prepare(payload_length);
+        auto message_buffer = decrypted_buffer.prepare(payload_length); // Not supposed to throw length error
         auto message_span = mutable_buffer_span_cast(message_buffer);
         auto success = crypto::aead_decrypt(secrets, payload_length_bytes,
                                             {cipher_text}, message_span);
