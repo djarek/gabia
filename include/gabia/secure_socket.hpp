@@ -26,11 +26,11 @@ namespace asio = boost::asio;
 namespace beast = boost::beast;
 
 template <typename DynamicBuffer>
-auto prepare_or_error(DynamicBuffer& buffer, size_t n, beast::error_code& error)
-{
+auto prepare_or_error(DynamicBuffer& buffer, size_t n,
+                      beast::error_code& error) {
     boost::optional<typename DynamicBuffer::mutable_buffers_type> sequence;
     try {
-         sequence = buffer.prepare(n);
+        sequence = buffer.prepare(n);
     } catch (const std::length_error&) {
         error = asio::error::message_size;
     }
@@ -44,10 +44,12 @@ public:
 
     constexpr static auto max_payload_length = 1024;
 
-    explicit secure_socket(asio::io_service& service) : next_layer_stream{service} {}
+    explicit secure_socket(asio::io_service& service)
+        : next_layer_stream{service} {}
 
-    template<class... Args>
-    secure_socket(crypto::aead_secrets secrets, Args&&... args) : secrets{secrets}, next_layer_stream{std::forward<Args>(args)...} {}
+    template <class... Args>
+    secure_socket(crypto::aead_secrets secrets, Args&&... args)
+        : secrets{secrets}, next_layer_stream{std::forward<Args>(args)...} {}
 
     auto& next_layer() { return next_layer_stream; }
 
@@ -146,20 +148,15 @@ public:
             auto consumed =
                 boost::asio::buffer_copy(sequence, decrypted_buffer.data());
             decrypted_buffer.consume(consumed);
-            next_layer().get_io_service().dispatch([
-                consumed, handler = std::move(init.completion_handler)
-            ]() mutable {
-                beast::error_code error{};
-                handler(error, consumed);
-            });
+            next_layer().get_io_service().post(beast::bind_handler(
+                init.completion_handler, beast::error_code{}, consumed));
         } else {
-            async_read_some_op<MutableBufferSequence, Handler> operation{
-                *this, sequence, std::move(init.completion_handler)};
-            next_layer().get_io_service().dispatch([operation = std::move(
-                                                        operation)]() mutable {
-                beast::error_code error{};
-                operation(error, 0);
-            });
+            async_read_some_op<
+                MutableBufferSequence,
+                beast::handler_type<Handler,
+                                    void(beast::error_code, std::size_t)>>
+                operation{*this, sequence, std::move(init.completion_handler)};
+            operation(beast::error_code{}, 0);
         }
         return init.result.get();
     }
@@ -168,13 +165,12 @@ public:
     auto async_write_some(ConstBufferSequence sequence, Handler&& handler) {
         beast::async_completion<Handler, void(beast::error_code, size_t)> init{
             handler};
-        async_write_some_op<ConstBufferSequence, Handler> operation{
-            *this, sequence, std::move(init.completion_handler)};
-        next_layer().get_io_service().dispatch([operation = std::move(
-                                                    operation)]() mutable {
-            beast::error_code error{};
-            operation(error, 0);
-        });
+
+        async_write_some_op<
+            ConstBufferSequence,
+            beast::handler_type<Handler, void(beast::error_code, std::size_t)>>
+            operation{*this, sequence, std::move(init.completion_handler)};
+        operation(beast::error_code{}, 0);
         return init.result.get();
     }
 
@@ -185,12 +181,13 @@ public:
 private:
     template <typename ConstBufferSequence, typename Handler>
     struct async_write_some_op : public asio::coroutine {
+        template <typename DeducedHandler>
         async_write_some_op(secure_socket& socket,
                             const ConstBufferSequence& sequence,
-                            Handler&& handler)
+                            DeducedHandler&& handler)
             : socket{socket},
               sequence{sequence},
-              handler{std::forward<Handler>(handler)} {}
+              handler{std::forward<DeducedHandler>(handler)} {}
 
         void operator()(beast::error_code error, size_t n) {
             CORO_REENTER(*this) {
@@ -202,6 +199,29 @@ private:
             }
         }
 
+        friend void* asio_handler_allocate(std::size_t size,
+                                           async_write_some_op* op) {
+            using boost::asio::asio_handler_allocate;
+            return asio_handler_allocate(size, std::addressof(op->handler));
+        }
+
+        friend void asio_handler_deallocate(void* p, std::size_t size,
+                                            async_write_some_op* op) {
+            using boost::asio::asio_handler_deallocate;
+            asio_handler_deallocate(p, size, std::addressof(op->handler));
+        }
+
+        friend bool asio_handler_is_continuation(async_write_some_op* op) {
+            using boost::asio::asio_handler_is_continuation;
+            return asio_handler_is_continuation(std::addressof(op->handler));
+        }
+
+        template <class Function>
+        friend void asio_handler_invoke(Function&& f, async_write_some_op* op) {
+            using boost::asio::asio_handler_invoke;
+            asio_handler_invoke(f, std::addressof(op->handler));
+        }
+
         secure_socket& socket;
         ConstBufferSequence sequence;
         Handler handler;
@@ -210,12 +230,13 @@ private:
 
     template <typename MutableBufferSequence, typename Handler>
     struct async_read_some_op : public asio::coroutine {
+        template <typename DeducedHandler>
         async_read_some_op(secure_socket& socket,
                            const MutableBufferSequence& sequence,
-                           Handler&& handler)
+                           DeducedHandler&& handler)
             : socket{socket},
               sequence{sequence},
-              handler{std::forward<Handler>(handler)} {}
+              handler{std::forward<DeducedHandler>(handler)} {}
         secure_socket& socket;
         MutableBufferSequence sequence;
         Handler handler;
@@ -228,10 +249,13 @@ private:
             CORO_REENTER(*this) {
                 while (transferred < sizeof(payload_length) + payload_length +
                                          crypto::aead_auth_tag_size) {
-                    raw_sequence = prepare_or_error(socket.raw_buffer, 1024, error);
+                    raw_sequence =
+                        prepare_or_error(socket.raw_buffer, 1024, error);
                     if (error) {
-                        // TODO: Should the socket be closed? It's going to be most likely in an unusable state.
-                        socket.get_io_service().post(beast::bind_handler(handler, error, 0));
+                        // TODO: Should the socket be closed? It's going to be
+                        // most likely in an unusable state.
+                        socket.get_io_service().post(
+                            beast::bind_handler(handler, error, 0));
                         return;
                     }
                     CORO_YIELD socket.next_layer().async_read_some(
@@ -260,6 +284,29 @@ private:
                 handler(error, consumed);
             }
         }
+
+        friend void* asio_handler_allocate(std::size_t size,
+                                           async_read_some_op* op) {
+            using boost::asio::asio_handler_allocate;
+            return asio_handler_allocate(size, std::addressof(op->handler));
+        }
+
+        friend void asio_handler_deallocate(void* p, std::size_t size,
+                                            async_read_some_op* op) {
+            using boost::asio::asio_handler_deallocate;
+            asio_handler_deallocate(p, size, std::addressof(op->handler));
+        }
+
+        friend bool asio_handler_is_continuation(async_read_some_op* op) {
+            using boost::asio::asio_handler_is_continuation;
+            return asio_handler_is_continuation(std::addressof(op->handler));
+        }
+
+        template <class Function>
+        friend void asio_handler_invoke(Function&& f, async_read_some_op* op) {
+            using boost::asio::asio_handler_invoke;
+            asio_handler_invoke(f, std::addressof(op->handler));
+        }
     };
 
     bool decrypt_pdu(boost::endian::little_int16_t& payload_length) {
@@ -269,7 +316,8 @@ private:
             buffer_span_cast(raw_buffer.data())
                 .subspan(sizeof(payload_length),
                          payload_length + crypto::aead_auth_tag_size);
-        auto message_buffer = decrypted_buffer.prepare(payload_length); // Not supposed to throw length error
+        auto message_buffer = decrypted_buffer.prepare(
+            payload_length); // Not supposed to throw length error
         auto message_span = mutable_buffer_span_cast(message_buffer);
         auto success = crypto::aead_decrypt(secrets, payload_length_bytes,
                                             {cipher_text}, message_span);
