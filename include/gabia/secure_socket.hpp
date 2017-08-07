@@ -40,8 +40,9 @@ auto prepare_or_error(DynamicBuffer& buffer, size_t n,
 template <typename Stream>
 class secure_socket {
 public:
-    using next_layer_type = Stream;
-
+    using next_layer_type = typename std::remove_reference<Stream>::type;
+    using lowest_layer_type =
+        typename beast::get_lowest_layer<next_layer_type>::type;
     constexpr static auto max_payload_length = 1024;
 
     explicit secure_socket(asio::io_service& service)
@@ -61,9 +62,11 @@ public:
 
     auto& get_io_service() { return lowest_layer().get_io_service(); }
 
-    bool is_open() const { return next_layer().is_open(); }
+    bool is_open() const { return lowest_layer().is_open(); }
 
-    void close() { next_layer().close(); }
+    void close() { lowest_layer().close(); }
+
+    void close(beast::error_code& error) { lowest_layer().close(error); }
 
     template <typename ConstBufferSequence>
     std::size_t write_some(const ConstBufferSequence& sequence,
@@ -81,7 +84,7 @@ public:
 
     template <typename ConstBufferSequence>
     auto write_some(const ConstBufferSequence& sequence) {
-        beast::error_code error = {};
+        beast::error_code error;
         auto n = write_some(sequence, error);
         Expects(!error);
         return n;
@@ -185,47 +188,61 @@ private:
         async_write_some_op(secure_socket& socket,
                             const ConstBufferSequence& sequence,
                             DeducedHandler&& handler)
-            : socket{socket},
-              sequence{sequence},
-              handler{std::forward<DeducedHandler>(handler)} {}
+            : state_ptr(std::forward<DeducedHandler>(handler), socket,
+                        sequence) {}
 
         void operator()(beast::error_code error, size_t n) {
             CORO_REENTER(*this) {
                 static_cast<void>(n);
-                socket.encrypt_pdu(sequence, pdu);
-                CORO_YIELD asio::async_write(socket.next_layer(),
-                                             asio::buffer(pdu), *this);
-                handler(error, asio::buffer_size(sequence));
+
+                state_ptr->socket.encrypt_pdu(state_ptr->sequence,
+                                              state_ptr->pdu);
+                CORO_YIELD asio::async_write(state_ptr->socket.next_layer(),
+                                             asio::buffer(state_ptr->pdu),
+                                             *this);
+                auto n = asio::buffer_size(state_ptr->sequence);
+                state_ptr.invoke(error, n);
             }
         }
 
         friend void* asio_handler_allocate(std::size_t size,
                                            async_write_some_op* op) {
             using boost::asio::asio_handler_allocate;
-            return asio_handler_allocate(size, std::addressof(op->handler));
+            return asio_handler_allocate(
+                size, std::addressof(op->state_ptr.handler()));
         }
 
         friend void asio_handler_deallocate(void* p, std::size_t size,
                                             async_write_some_op* op) {
             using boost::asio::asio_handler_deallocate;
-            asio_handler_deallocate(p, size, std::addressof(op->handler));
+            asio_handler_deallocate(p, size,
+                                    std::addressof(op->state_ptr.handler()));
         }
 
         friend bool asio_handler_is_continuation(async_write_some_op* op) {
             using boost::asio::asio_handler_is_continuation;
-            return asio_handler_is_continuation(std::addressof(op->handler));
+            return asio_handler_is_continuation(
+                std::addressof(op->state_ptr.handler()));
         }
 
         template <class Function>
         friend void asio_handler_invoke(Function&& f, async_write_some_op* op) {
             using boost::asio::asio_handler_invoke;
-            asio_handler_invoke(f, std::addressof(op->handler));
+            asio_handler_invoke(f, std::addressof(op->state_ptr.handler()));
         }
 
-        secure_socket& socket;
-        ConstBufferSequence sequence;
-        Handler handler;
-        std::vector<gsl::byte> pdu;
+        struct state {
+            template <typename DeducedHandler>
+            state(DeducedHandler&&, secure_socket& socket,
+                  const ConstBufferSequence& sequence)
+                : socket{socket}, sequence{sequence} {}
+
+            secure_socket& socket;
+            ConstBufferSequence sequence;
+            std::vector<gsl::byte> pdu;
+        };
+
+        beast::handler_ptr<state, Handler> state_ptr;
     };
 
     template <typename MutableBufferSequence, typename Handler>
