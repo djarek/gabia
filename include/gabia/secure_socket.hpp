@@ -79,7 +79,7 @@ public:
             return 0;
         }
 
-        return asio::buffer_size(sequence);
+        return pdu.size() - sizeof(uint16_t) - crypto::aead_auth_tag_size;
     }
 
     template <typename ConstBufferSequence>
@@ -104,7 +104,10 @@ public:
         }
 
         boost::endian::little_int16_t payload_length = 0;
-        size_t transferred = 0;
+        size_t transferred = raw_buffer.size();
+        // Need to attempt length extraction before the loop, because the raw
+        // buffer might contain unparsed PDUs.
+        extract_pdu_length(payload_length);
         while (transferred < sizeof(payload_length) + payload_length +
                                  crypto::aead_auth_tag_size) {
             auto mb = prepare_or_error(raw_buffer, max_payload_length, error);
@@ -200,7 +203,8 @@ private:
                 CORO_YIELD asio::async_write(state_ptr->socket.next_layer(),
                                              asio::buffer(state_ptr->pdu),
                                              *this);
-                auto n = asio::buffer_size(state_ptr->sequence);
+                auto n = state_ptr->pdu.size() - sizeof(uint16_t) -
+                         crypto::aead_auth_tag_size;
                 state_ptr.invoke(error, n);
             }
         }
@@ -232,14 +236,16 @@ private:
         }
 
         struct state {
-            template <typename DeducedHandler>
-            state(DeducedHandler&&, secure_socket& socket,
+            state(Handler& handler, secure_socket& socket,
                   const ConstBufferSequence& sequence)
-                : socket{socket}, sequence{sequence} {}
+                : socket{socket},
+                  sequence{sequence},
+                  pdu{beast::handler_alloc<char, Handler>{handler}} {}
 
             secure_socket& socket;
             ConstBufferSequence sequence;
-            std::vector<gsl::byte> pdu;
+            using alloc_t = beast::handler_alloc<gsl::byte, Handler>;
+            std::vector<gsl::byte, alloc_t> pdu;
         };
 
         beast::handler_ptr<state, Handler> state_ptr;
@@ -264,13 +270,15 @@ private:
 
         void operator()(beast::error_code error, size_t n) {
             CORO_REENTER(*this) {
+                transferred = socket.raw_buffer.size();
+                // Need to attempt length extraction before the loop, because
+                // the raw buffer might contain unparsed PDUs.
+                socket.extract_pdu_length(payload_length);
                 while (transferred < sizeof(payload_length) + payload_length +
                                          crypto::aead_auth_tag_size) {
                     raw_sequence =
                         prepare_or_error(socket.raw_buffer, 1024, error);
                     if (error) {
-                        // TODO: Should the socket be closed? It's going to be
-                        // most likely in an unusable state.
                         socket.get_io_service().post(
                             beast::bind_handler(handler, error, 0));
                         return;
@@ -344,9 +352,8 @@ private:
         return success;
     }
 
-    template <typename ConstBufferSequence>
-    void encrypt_pdu(ConstBufferSequence& sequence,
-                     std::vector<gsl::byte>& pdu) {
+    template <typename ConstBufferSequence, typename ByteVector>
+    void encrypt_pdu(ConstBufferSequence& sequence, ByteVector& pdu) {
         boost::endian::little_int16_t payload_length = std::min<std::size_t>(
             asio::buffer_size(sequence), max_payload_length);
         pdu.resize(sizeof(payload_length) + payload_length +
