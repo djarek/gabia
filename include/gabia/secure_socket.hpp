@@ -120,7 +120,7 @@ public:
                 return 0;
             }
 
-            transferred += next_layer().read_some(mb, error);
+            transferred += next_layer().read_some(*mb, error);
             if (error) {
                 return 0;
             }
