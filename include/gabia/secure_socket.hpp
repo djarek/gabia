@@ -73,7 +73,7 @@ public:
     template <typename ConstBufferSequence>
     std::size_t write_some(const ConstBufferSequence& sequence,
                            beast::error_code& error) {
-        error = {};
+        error.assign(0, error.category());;
         std::vector<gsl::byte> pdu{};
         encrypt_pdu(pdu, sequence);
         asio::write(next_layer(), asio::buffer(pdu), error);
@@ -98,7 +98,7 @@ public:
     template <typename MutableBufferSequence>
     std::size_t read_some(const MutableBufferSequence& sequence,
                           beast::error_code& error) {
-        error = {};
+        error.assign(0, error.category());;
         if (decrypted_buffer.size() > 0) {
             // We have already decrypted data ready to be retrieved from the
             // buffer
@@ -145,7 +145,7 @@ public:
 
     template <typename MutableBufferSequence>
     std::size_t read_some(const MutableBufferSequence& sequence) {
-        beast::error_code error = {};
+        beast::error_code error;
         auto n = read_some(sequence, error);
         if (error) {
             // TODO: should a function from detail subnamespace be used??
