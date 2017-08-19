@@ -88,7 +88,10 @@ public:
     auto write_some(const ConstBufferSequence& sequence) {
         beast::error_code error;
         auto n = write_some(sequence, error);
-        Expects(!error);
+        if (error) {
+            // TODO: should a function from detail subnamespace be used??
+            boost::asio::detail::throw_exception(beast::system_error{error});
+        }
         return n;
     }
 
@@ -144,7 +147,10 @@ public:
     std::size_t read_some(const MutableBufferSequence& sequence) {
         beast::error_code error = {};
         auto n = read_some(sequence, error);
-        Expects(!error);
+        if (error) {
+            // TODO: should a function from detail subnamespace be used??
+            boost::asio::detail::throw_exception(beast::system_error{error});
+        }
         return n;
     }
 
