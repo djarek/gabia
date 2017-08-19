@@ -45,6 +45,8 @@ public:
         typename beast::get_lowest_layer<next_layer_type>::type;
     constexpr static auto max_payload_length = 1024;
 
+    secure_socket() = default;
+
     explicit secure_socket(asio::io_service& service)
         : next_layer_stream{service} {}
 
@@ -196,7 +198,7 @@ private:
 
         void operator()(beast::error_code error, size_t n) {
             CORO_REENTER(*this) {
-                static_cast<void>(n);
+                boost::ignore_unused(n);
 
                 state_ptr->socket.encrypt_pdu(state_ptr->sequence,
                                               state_ptr->pdu);
