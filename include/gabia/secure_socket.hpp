@@ -60,13 +60,10 @@ public:
 
     auto& get_io_service() { return lowest_layer().get_io_service(); }
 
-    bool is_open() const { return lowest_layer().is_open(); }
-
     template <typename ConstBufferSequence>
     std::size_t write_some(const ConstBufferSequence& sequence,
                            boost::beast::error_code& error) {
         error.assign(0, error.category());
-        ;
         std::vector<gsl::byte> pdu{};
         encrypt_pdu(pdu, sequence);
         boost::asio::write(next_layer(), boost::asio::buffer(pdu), error);
@@ -93,7 +90,6 @@ public:
     std::size_t read_some(const MutableBufferSequence& sequence,
                           boost::beast::error_code& error) {
         error.assign(0, error.category());
-        ;
         if (decrypted_buffer.size() > 0) {
             // We have already decrypted data ready to be retrieved from the
             // buffer
