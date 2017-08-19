@@ -22,17 +22,14 @@
 
 namespace gabia {
 
-namespace asio = boost::asio;
-namespace beast = boost::beast;
-
 template <typename DynamicBuffer>
 auto prepare_or_error(DynamicBuffer& buffer, size_t n,
-                      beast::error_code& error) {
+                     boost::beast::error_code& error) {
     boost::optional<typename DynamicBuffer::mutable_buffers_type> sequence;
     try {
         sequence = buffer.prepare(n);
     } catch (const std::length_error&) {
-        error = asio::error::message_size;
+        error = boost::asio::error::message_size;
     }
     return sequence;
 }
@@ -42,12 +39,10 @@ class secure_socket {
 public:
     using next_layer_type = typename std::remove_reference<Stream>::type;
     using lowest_layer_type =
-        typename beast::get_lowest_layer<next_layer_type>::type;
-    constexpr static auto max_payload_length = 1024;
-
+        typename boost::beast::get_lowest_layer<next_layer_type>::type;
     secure_socket() = default;
 
-    explicit secure_socket(asio::io_service& service)
+    explicit secure_socket(boost::asio::io_service& service)
         : next_layer_stream{service} {}
 
     template <class... Args>
@@ -68,15 +63,15 @@ public:
 
     void close() { lowest_layer().close(); }
 
-    void close(beast::error_code& error) { lowest_layer().close(error); }
+    void close(boost::beast::error_code& error) { lowest_layer().close(error); }
 
     template <typename ConstBufferSequence>
     std::size_t write_some(const ConstBufferSequence& sequence,
-                           beast::error_code& error) {
+                          boost::beast::error_code& error) {
         error.assign(0, error.category());;
         std::vector<gsl::byte> pdu{};
         encrypt_pdu(pdu, sequence);
-        asio::write(next_layer(), asio::buffer(pdu), error);
+        boost::asio::write(next_layer(), boost::asio::buffer(pdu), error);
         if (error) {
             return 0;
         }
@@ -86,18 +81,18 @@ public:
 
     template <typename ConstBufferSequence>
     auto write_some(const ConstBufferSequence& sequence) {
-        beast::error_code error;
+       boost::beast::error_code error;
         auto n = write_some(sequence, error);
         if (error) {
             // TODO: should a function from detail subnamespace be used??
-            boost::asio::detail::throw_exception(beast::system_error{error});
+            boost::asio::detail::throw_exception(boost::beast::system_error{error});
         }
         return n;
     }
 
     template <typename MutableBufferSequence>
     std::size_t read_some(const MutableBufferSequence& sequence,
-                          beast::error_code& error) {
+                         boost::beast::error_code& error) {
         error.assign(0, error.category());;
         if (decrypted_buffer.size() > 0) {
             // We have already decrypted data ready to be retrieved from the
@@ -132,7 +127,7 @@ public:
         if (!success) {
             // Forged/spoofed message
             // TODO: use a more appropriate error code
-            error = asio::error::no_permission;
+            error = boost::asio::error::no_permission;
             decrypted_buffer.consume(payload_length);
             return 0;
         }
@@ -145,46 +140,46 @@ public:
 
     template <typename MutableBufferSequence>
     std::size_t read_some(const MutableBufferSequence& sequence) {
-        beast::error_code error;
+       boost::beast::error_code error;
         auto n = read_some(sequence, error);
         if (error) {
             // TODO: should a function from detail subnamespace be used??
-            boost::asio::detail::throw_exception(beast::system_error{error});
+            boost::asio::detail::throw_exception(boost::beast::system_error{error});
         }
         return n;
     }
 
     template <typename MutableBufferSequence, typename Handler>
     auto async_read_some(MutableBufferSequence sequence, Handler&& handler) {
-        beast::async_completion<Handler, void(beast::error_code, size_t)> init{
+       boost::beast::async_completion<Handler, void(boost::beast::error_code, size_t)> init{
             handler};
         if (decrypted_buffer.size() > 0) {
             auto consumed =
                 boost::asio::buffer_copy(sequence, decrypted_buffer.data());
             decrypted_buffer.consume(consumed);
-            next_layer().get_io_service().post(beast::bind_handler(
-                init.completion_handler, beast::error_code{}, consumed));
+            next_layer().get_io_service().post(boost::beast::bind_handler(
+                init.completion_handler,boost::beast::error_code{}, consumed));
         } else {
             async_read_some_op<
                 MutableBufferSequence,
-                beast::handler_type<Handler,
-                                    void(beast::error_code, std::size_t)>>
+               boost::beast::handler_type<Handler,
+                                    void(boost::beast::error_code, std::size_t)>>
                 operation{*this, sequence, std::move(init.completion_handler)};
-            operation(beast::error_code{}, 0);
+            operation(boost::beast::error_code{}, 0);
         }
         return init.result.get();
     }
 
     template <typename ConstBufferSequence, typename Handler>
     auto async_write_some(ConstBufferSequence sequence, Handler&& handler) {
-        beast::async_completion<Handler, void(beast::error_code, size_t)> init{
+       boost::beast::async_completion<Handler, void(boost::beast::error_code, size_t)> init{
             handler};
 
         async_write_some_op<
             ConstBufferSequence,
-            beast::handler_type<Handler, void(beast::error_code, std::size_t)>>
+           boost::beast::handler_type<Handler, void(boost::beast::error_code, std::size_t)>>
             operation{*this, sequence, std::move(init.completion_handler)};
-        operation(beast::error_code{}, 0);
+        operation(boost::beast::error_code{}, 0);
         return init.result.get();
     }
 
@@ -193,8 +188,10 @@ public:
     }
 
 private:
+    constexpr static auto max_payload_length = 1024;
+
     template <typename ConstBufferSequence, typename Handler>
-    struct async_write_some_op : public asio::coroutine {
+    struct async_write_some_op : public boost::asio::coroutine {
         template <typename DeducedHandler>
         async_write_some_op(secure_socket& socket,
                             const ConstBufferSequence& sequence,
@@ -210,14 +207,14 @@ private:
 
         ~async_write_some_op() = default;
 
-        void operator()(beast::error_code error, size_t n) {
+        void operator()(boost::beast::error_code error, size_t n) {
             CORO_REENTER(*this) {
                 boost::ignore_unused(n);
 
                 state_ptr->socket.encrypt_pdu(state_ptr->sequence,
                                               state_ptr->pdu);
-                CORO_YIELD asio::async_write(state_ptr->socket.next_layer(),
-                                             asio::buffer(state_ptr->pdu),
+                CORO_YIELD boost::asio::async_write(state_ptr->socket.next_layer(),
+                                             boost::asio::buffer(state_ptr->pdu),
                                              *this);
                 auto n = state_ptr->pdu.size() - sizeof(uint16_t) -
                          crypto::aead_auth_tag_size;
@@ -256,19 +253,19 @@ private:
                   const ConstBufferSequence& sequence)
                 : socket{socket},
                   sequence{sequence},
-                  pdu{beast::handler_alloc<char, Handler>{handler}} {}
+                  pdu{boost::beast::handler_alloc<char, Handler>{handler}} {}
 
             secure_socket& socket;
             ConstBufferSequence sequence;
-            using alloc_t = beast::handler_alloc<gsl::byte, Handler>;
+            using alloc_t =boost::beast::handler_alloc<gsl::byte, Handler>;
             std::vector<gsl::byte, alloc_t> pdu;
         };
 
-        beast::handler_ptr<state, Handler> state_ptr;
+       boost::beast::handler_ptr<state, Handler> state_ptr;
     };
 
     template <typename MutableBufferSequence, typename Handler>
-    struct async_read_some_op : public asio::coroutine {
+    struct async_read_some_op : public boost::asio::coroutine {
         template <typename DeducedHandler>
         async_read_some_op(secure_socket& socket,
                            const MutableBufferSequence& sequence,
@@ -291,9 +288,9 @@ private:
 
         size_t transferred = 0;
         boost::endian::little_int16_t payload_length = 0;
-        boost::optional<beast::flat_buffer::mutable_buffers_type> raw_sequence;
+        boost::optional<boost::beast::flat_buffer::mutable_buffers_type> raw_sequence;
 
-        void operator()(beast::error_code error, size_t n) {
+        void operator()(boost::beast::error_code error, size_t n) {
             CORO_REENTER(*this) {
                 transferred = socket.raw_buffer.size();
                 // Need to attempt length extraction before the loop, because
@@ -305,7 +302,7 @@ private:
                         prepare_or_error(socket.raw_buffer, 1024, error);
                     if (error) {
                         socket.get_io_service().post(
-                            beast::bind_handler(handler, error, 0));
+                           boost::beast::bind_handler(handler, error, 0));
                         return;
                     }
                     CORO_YIELD socket.next_layer().async_read_some(
@@ -324,7 +321,7 @@ private:
                 if (!success) {
                     socket.decrypted_buffer.consume(payload_length);
                     // TODO: use a more appropriate error code
-                    error = asio::error::no_permission;
+                    error = boost::asio::error::no_permission;
                     handler(error, 0);
                     return;
                 }
@@ -380,7 +377,7 @@ private:
     template <typename ConstBufferSequence, typename ByteVector>
     void encrypt_pdu(ConstBufferSequence& sequence, ByteVector& pdu) {
         boost::endian::little_int16_t payload_length = std::min<std::size_t>(
-            asio::buffer_size(sequence), max_payload_length);
+            boost::asio::buffer_size(sequence), max_payload_length);
         pdu.resize(sizeof(payload_length) + payload_length +
                    crypto::aead_auth_tag_size);
         auto payload_length_bytes =
@@ -390,7 +387,7 @@ private:
         auto cipher_text = gsl::make_span(pdu).subspan(sizeof(payload_length));
         auto aad = gsl::make_span(pdu).first(sizeof(payload_length));
 
-        asio::buffer_copy(asio::buffer(payload), sequence,
+        boost::asio::buffer_copy(boost::asio::buffer(payload), sequence,
                           payload.size_bytes());
         std::copy(payload_length_bytes.begin(), payload_length_bytes.end(),
                   aad.begin());
@@ -400,7 +397,7 @@ private:
     void extract_pdu_length(boost::endian::little_int16_t& payload_length) {
         auto payload_length_bytes =
             gsl::as_writeable_bytes(gsl::make_span(&payload_length, 1));
-        asio::buffer_copy(asio::buffer(payload_length_bytes),
+        boost::asio::buffer_copy(boost::asio::buffer(payload_length_bytes),
                           raw_buffer.data());
     }
 
@@ -408,8 +405,8 @@ private:
     crypto::aead_secrets secrets = {};
     bool session_security_enabled = false;
 
-    beast::flat_buffer raw_buffer{2048};
-    beast::flat_buffer decrypted_buffer{2048};
+   boost::beast::flat_buffer raw_buffer{2048};
+   boost::beast::flat_buffer decrypted_buffer{2048};
 };
 } // namespace gabia
 
