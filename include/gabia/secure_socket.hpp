@@ -202,6 +202,14 @@ private:
             : state_ptr(std::forward<DeducedHandler>(handler), socket,
                         sequence) {}
 
+        async_write_some_op(const async_write_some_op&) = default;
+        async_write_some_op(async_write_some_op&&) = default;
+
+        async_write_some_op& operator=(const async_write_some_op&) = default;
+        async_write_some_op& operator=(async_write_some_op&&) = default;
+
+        ~async_write_some_op() = default;
+
         void operator()(beast::error_code error, size_t n) {
             CORO_REENTER(*this) {
                 boost::ignore_unused(n);
@@ -268,6 +276,15 @@ private:
             : socket{socket},
               sequence{sequence},
               handler{std::forward<DeducedHandler>(handler)} {}
+
+        async_read_some_op(const async_read_some_op&) = default;
+        async_read_some_op(async_read_some_op&&) = default;
+
+        async_read_some_op& operator=(const async_read_some_op&) = default;
+        async_read_some_op& operator=(async_read_some_op&&) = default;
+
+        ~async_read_some_op() = default;
+
         secure_socket& socket;
         MutableBufferSequence sequence;
         Handler handler;
