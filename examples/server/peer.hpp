@@ -22,11 +22,11 @@ public:
 
     peer(asio::io_service& service) : socket{service} {}
 
-    bool is_connected() { return socket.is_open(); }
+    bool is_connected() { return socket.lowest_layer().is_open(); }
 
     void disconnect() {
-        if (socket.is_open()) {
-            socket.close();
+        if (socket.lowest_layer().is_open()) {
+            socket.lowest_layer().close();
         }
     }
 
