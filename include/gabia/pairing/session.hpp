@@ -149,6 +149,6 @@ private:
 } // namespace pairing
 } // namespace gabia
 
-#include "session.ipp"
+#include <gabia/pairing/session.ipp>
 
 #endif // HK_SESSION_HPP
