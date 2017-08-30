@@ -13,8 +13,18 @@
 #include <gabia/bytes.hpp>
 #include <gabia/crypto/aead.hpp>
 
-#include <boost/asio.hpp>
-#include <boost/beast.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/asio/coroutine.hpp>
+//#include <boost/beast/http.hpp>
+#include <boost/optional.hpp>
+#include <boost/beast/core/async_result.hpp>
+#include <boost/beast/core/bind_handler.hpp>
+#include <boost/beast/core/error.hpp>
+#include <boost/beast/core/flat_buffer.hpp>
+#include <boost/beast/core/handler_ptr.hpp>
+#include <boost/beast/core/handler_alloc.hpp>
+
+#include <boost/beast/core/type_traits.hpp>
 #include <boost/endian/arithmetic.hpp>
 
 #define CORO_YIELD BOOST_ASIO_CORO_YIELD
