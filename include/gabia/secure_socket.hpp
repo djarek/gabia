@@ -41,6 +41,9 @@ public:
     using lowest_layer_type =
         typename boost::beast::get_lowest_layer<next_layer_type>::type;
     secure_socket() = default;
+    secure_socket(secure_socket&&) = default;
+    secure_socket& operator=(secure_socket&&) = default;
+    ~secure_socket() = default;
 
     template <typename Arg1, typename... Args, typename = typename std::enable_if<!std::is_convertible<Arg1, crypto::aead_secrets>::value, void>>
     explicit secure_socket(Arg1&& arg1, Args&&... args)
@@ -65,7 +68,7 @@ public:
                            boost::beast::error_code& error) {
         error.assign(0, error.category());
         std::vector<gsl::byte> pdu{};
-        encrypt_pdu(pdu, sequence);
+        encrypt_pdu(sequence, pdu);
         boost::asio::write(next_layer(), boost::asio::buffer(pdu), error);
         if (error) {
             return 0;
