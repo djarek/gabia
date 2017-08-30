@@ -14,6 +14,9 @@
 #include <wolfssl/wolfcrypt/chacha20_poly1305.h>
 #include <wolfssl/wolfcrypt/error-crypt.h>
 
+#include <boost/endian/arithmetic.hpp>
+
+#include <gsl/gsl_algorithm>
 #include <gsl/gsl>
 
 namespace gabia {
@@ -38,9 +41,9 @@ inline std::array<gsl::byte, aead_nonce_size> aead_generate_nonce(
     uint64_t& counter) {
     std::array<gsl::byte, aead_nonce_size> ret = {};
     auto ret_span = gsl::make_span(ret).last(sizeof(uint64_t));
-    auto counter_span = gsl::as_bytes(gsl::make_span(&counter, 1));
-    std::copy(counter_span.begin(), counter_span.end(),
-              ret_span.begin()); // TODO: endianness?
+    boost::endian::little_uint64_t counter_le = counter;
+    auto counter_span = gsl::as_bytes(gsl::make_span(&counter_le, 1));
+    gsl::copy(counter_span, ret_span);
     ++counter;
     return ret;
 }
