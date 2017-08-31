@@ -85,7 +85,7 @@ private:
     std::array<gsl::byte, crypto::hkdf_output_key_size> session_key;
 
     const std::string our_identifier{
-        "DA:AD:BE:EF:DE:AD"}; // TODO: Should retrieve
+        "C3:1F:07:53:7A:C6"}; // TODO: Should retrieve
                               // this from accessory
                               // server configuration
 };
@@ -141,7 +141,7 @@ private:
 
     key_store_type& pairings;
     const std::string our_identifier{
-        "DA:AD:BE:EF:DE:AD"}; // TODO: Should retrieve
+        "C3:1F:07:53:7A:C6"}; // TODO: Should retrieve
                               // this from accessory
                               // server configuration
 };
