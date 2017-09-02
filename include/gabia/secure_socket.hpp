@@ -13,16 +13,16 @@
 #include <gabia/bytes.hpp>
 #include <gabia/crypto/aead.hpp>
 
-#include <boost/asio/error.hpp>
 #include <boost/asio/coroutine.hpp>
+#include <boost/asio/error.hpp>
 //#include <boost/beast/http.hpp>
-#include <boost/optional.hpp>
 #include <boost/beast/core/async_result.hpp>
 #include <boost/beast/core/bind_handler.hpp>
 #include <boost/beast/core/error.hpp>
 #include <boost/beast/core/flat_buffer.hpp>
-#include <boost/beast/core/handler_ptr.hpp>
 #include <boost/beast/core/handler_alloc.hpp>
+#include <boost/beast/core/handler_ptr.hpp>
+#include <boost/optional.hpp>
 
 #include <boost/beast/core/type_traits.hpp>
 #include <boost/endian/arithmetic.hpp>
@@ -55,9 +55,13 @@ public:
     secure_socket& operator=(secure_socket&&) = default;
     ~secure_socket() = default;
 
-    template <typename Arg1, typename... Args, typename = typename std::enable_if<!std::is_convertible<Arg1, crypto::aead_secrets>::value, void>>
+    template <
+        typename Arg1, typename... Args,
+        typename = typename std::enable_if<
+            !std::is_convertible<Arg1, crypto::aead_secrets>::value, void>>
     explicit secure_socket(Arg1&& arg1, Args&&... args)
-        : next_layer_stream{std::forward<Arg1>(arg1), std::forward<Args>(args)...} {}
+        : next_layer_stream{std::forward<Arg1>(arg1),
+                            std::forward<Args>(args)...} {}
 
     template <typename... Args>
     secure_socket(crypto::aead_secrets secrets, Args&&... args)
