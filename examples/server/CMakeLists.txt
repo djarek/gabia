@@ -1,6 +1,12 @@
 add_executable(gabia_server_example main.cpp server.cpp)
-target_include_directories(gabia_server_example PUBLIC ../../../json/src/)
-target_include_directories(gabia_server_example PUBLIC src/)
-target_link_libraries(gabia_server_example ${Boost_LIBRARIES})
-target_link_libraries(gabia_server_example wolfssl)
-target_link_libraries(gabia_server_example pthread)
+target_include_directories(gabia_server_example PRIVATE
+    ../../../json/src/
+    src/
+)
+target_compile_definitions(gabia_server_example PRIVATE
+    BOOST_COROUTINES_NO_DEPRECATION_WARNING
+)
+target_link_libraries(gabia_server_example
+    ${Boost_LIBRARIES}
+    wolfssl
+    pthread)
