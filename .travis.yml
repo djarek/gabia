@@ -1,0 +1,17 @@
+dist: trusty
+language: cpp
+compiler:
+  - clang
+  - gcc
+cache: apt
+addons:
+  apt:
+    packages:
+      - libboost-dev
+      - libboost-system-dev
+      - libboost-iostreams-dev
+      - libboost-coroutine-dev
+before_script:
+  - mkdir build && cd build
+  - cmake -DCMAKE_BUILD_TYPE=Release ..
+script: make -j2
