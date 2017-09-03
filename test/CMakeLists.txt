@@ -2,7 +2,7 @@ project (gabia_tests CXX)
 
 function(add_gabia_test name)
     add_executable(${name} ${name}.cpp)
-    target_compile_definitions(secure_socket_tests PRIVATE
+    target_compile_definitions(${name} PRIVATE
         BOOST_TEST_DYN_LINK
         BOOST_TEST_MAIN
     )
@@ -10,7 +10,7 @@ function(add_gabia_test name)
         -ftest-coverage
         -fprofile-arcs
     )
-    target_link_libraries(secure_socket_tests
+    target_link_libraries(${name}
         ${Boost_LIBRARIES}
         wolfssl
         -ftest-coverage
