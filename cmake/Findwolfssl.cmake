@@ -1,0 +1,6 @@
+find_library(wolfssl_LIBRARIES wolfssl)
+find_path(wolfssl_INCLUDE_DIRS wolfssl/options.h)
+mark_as_advanced(wolfssl_LIBRARIES wolfssl_INCLUDE_DIRS)
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(wolfssl DEFAULT_MSG wolfssl_LIBRARIES wolfssl_INCLUDE_DIRS)
