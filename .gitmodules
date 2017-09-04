@@ -1,0 +1,9 @@
+[submodule "external/wolfssl"]
+	path = external/wolfssl
+	url = https://github.com/wolfSSL/wolfssl.git
+[submodule "external/GSL"]
+	path = external/GSL
+	url = https://github.com/Microsoft/GSL.git
+[submodule "external/beast"]
+	path = external/beast
+	url = https://github.com/boostorg/beast.git
