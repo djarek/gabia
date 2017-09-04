@@ -1,0 +1,1 @@
+add_gabia_test(secure_socket_tests)
