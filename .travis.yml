@@ -8,11 +8,14 @@ addons:
   apt:
     sources:
       - sourceline: 'ppa:kzemek/boost'
+      - ubuntu-toolchain-r-test
     packages:
       - libboost1.58-dev
       - libboost-coroutine1.58-dev
       - libboost-system1.58-dev
       - libboost-iostreams1.58-dev
+      - gcc-6
+      - g++-6
 
 before_install:
   - mkdir ~/deps
@@ -20,5 +23,5 @@ before_install:
 before_script:
   - ./build-dependencies.sh ~/deps
   - mkdir build && cd build
-  - cmake -DCMAKE_INCLUDE_PATH=~/deps/include -DCMAKE_LIBRARY_PATH=~/deps/lib -DCMAKE_BUILD_TYPE=Release ..
+  - CXX=g++-6 CC=gcc-6 cmake -DCMAKE_INCLUDE_PATH=~/deps/include -DCMAKE_LIBRARY_PATH=~/deps/lib -DCMAKE_BUILD_TYPE=Release ..
 script: make -j2
