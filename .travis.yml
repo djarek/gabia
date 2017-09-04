@@ -6,6 +6,8 @@ compiler:
 cache: apt
 addons:
   apt:
+    sources:
+      - sourceline: 'ppa:kzemek/boost'
     packages:
       - libboost1.58-dev
       - libboost1.58-system-dev
