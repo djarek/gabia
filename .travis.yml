@@ -21,7 +21,7 @@ before_install:
   - mkdir ~/deps
 
 before_script:
-  - ./build-dependencies.sh ~/deps
+  - CXX=g++-6 CC=gcc-6 ./build-dependencies.sh ~/deps
   - mkdir build && cd build
   - CXX=g++-6 CC=gcc-6 cmake -DCMAKE_INCLUDE_PATH=~/deps/include -DCMAKE_LIBRARY_PATH=~/deps/lib -DCMAKE_BUILD_TYPE=Release ..
 script: make -j2
