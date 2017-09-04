@@ -14,6 +14,7 @@ addons:
       - libboost-coroutine1.58-dev
       - libboost-system1.58-dev
       - libboost-iostreams1.58-dev
+      - libboost-test1.58-dev
       - gcc-6
       - g++-6
 
