@@ -10,17 +10,12 @@ addons:
       - sourceline: 'ppa:kzemek/boost'
     packages:
       - libboost1.58-dev
-      - libboost1.58-system-dev
-      - libboost1.58-iostreams-dev
-      - libboost1.58-coroutine-dev
 
 before_install:
   - mkdir ~/deps
 
-install:
-  - ./build-dependencies.sh ~/deps
-
 before_script:
+  - ./build-dependencies.sh ~/deps
   - mkdir build && cd build
   - cmake -DCMAKE_INCLUDE_PATH=~/deps/include -DCMAKE_LIBRARY_PATH=~/deps/lib -DCMAKE_BUILD_TYPE=Release ..
 script: make -j2
