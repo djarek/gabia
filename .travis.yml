@@ -10,6 +10,9 @@ addons:
       - sourceline: 'ppa:kzemek/boost'
     packages:
       - libboost1.58-dev
+      - libboost-coroutine1.58-dev
+      - libboost-system1.58-dev
+      - libboost-iostreams1.58-dev
 
 before_install:
   - mkdir ~/deps
